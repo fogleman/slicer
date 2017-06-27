@@ -36,21 +36,21 @@ func main() {
 	done()
 
 	done = timed("slicing mesh")
-	slices := slicer.SliceMesh(mesh, step)
+	layers := slicer.SliceMesh(mesh, step)
 	done()
 
 	// return
 
-	done = timed("rendering slices")
+	done = timed("rendering layers")
 	wn := runtime.NumCPU()
-	ch := make(chan job, len(slices))
+	ch := make(chan job, len(layers))
 	var wg sync.WaitGroup
 	for wi := 0; wi < wn; wi++ {
 		wg.Add(1)
 		go worker(ch, &wg)
 	}
-	for i, s := range slices {
-		ch <- job{i, s, box}
+	for i, l := range layers {
+		ch <- job{i, l, box}
 	}
 	close(ch)
 	wg.Wait()
@@ -64,21 +64,22 @@ type job struct {
 }
 
 func worker(ch chan job, wg *sync.WaitGroup) {
+	const S = 1600
+	const P = 50
 	for j := range ch {
 		i := j.i
 		layer := j.layer
 		box := j.box
 		center := box.Center()
 		size := box.Size()
-		sx := (1024 - 32) / size.X
-		sy := (1024 - 32) / size.Y
+		sx := (S - P*2) / size.X
+		sy := (S - P*2) / size.Y
 		scale := math.Min(sx, sy)
-		// fmt.Println(i, len(layer.Paths), layer.Z)
-		dc := gg.NewContext(1024, 1024)
+		dc := gg.NewContext(S, S)
 		dc.InvertY()
 		dc.SetRGB(1, 1, 1)
 		dc.Clear()
-		dc.Translate(512, 512)
+		dc.Translate(S/2, S/2)
 		dc.Scale(scale, scale)
 		dc.Translate(-center.X, -center.Y)
 		dc.SetFillRuleWinding()
@@ -91,7 +92,7 @@ func worker(ch chan job, wg *sync.WaitGroup) {
 		}
 		dc.SetRGB(0, 0, 0)
 		dc.Fill()
-		// dc.SetRGB(0.5, 0.5, 0.5)
+		// dc.SetRGB(0.6, 0.6, 0.6)
 		// dc.FillPreserve()
 		// dc.SetRGB(0, 0, 0)
 		// dc.SetLineWidth(3)
