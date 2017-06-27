@@ -4,14 +4,6 @@ import "github.com/fogleman/fauxgl"
 
 type Path []fauxgl.Vector
 
-// func (path Path) ToGEOS() *geos.Geometry {
-// 	coords := make([]geos.Coord, len(path))
-// 	for i, p := range path {
-// 		coords[i] = geos.Coord{p.X, p.Y, 0}
-// 	}
-// 	return geos.Must(geos.NewPolygon(coords))
-// }
-
 func joinPaths(paths []Path) []Path {
 	lookup := make(map[fauxgl.Vector]Path)
 	for _, path := range paths {

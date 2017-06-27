@@ -1,9 +1,12 @@
 package slicer
 
 import (
+	"bytes"
+	"fmt"
 	"math"
 	"runtime"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/fogleman/fauxgl"
@@ -12,6 +15,22 @@ import (
 type Layer struct {
 	Z     float64
 	Paths []Path
+}
+
+func (layer Layer) SVG() string {
+	var buf bytes.Buffer
+	for _, path := range layer.Paths {
+		for i, point := range path {
+			if i == 0 {
+				buf.WriteString("M ")
+			} else {
+				buf.WriteString("L ")
+			}
+			buf.WriteString(fmt.Sprintf("%g %g ", point.X, point.Y))
+		}
+		buf.WriteString("Z ")
+	}
+	return strings.TrimSpace(buf.String())
 }
 
 func SliceMesh(m *fauxgl.Mesh, step float64) []Layer {
@@ -39,7 +58,7 @@ func SliceMesh(m *fauxgl.Mesh, step float64) []Layer {
 	})
 
 	// create jobs for workers
-	n := int(math.Ceil((maxz-minz)/step)) + 1
+	n := int(math.Ceil((maxz - minz) / step))
 	in := make(chan job, n)
 	out := make(chan Layer, n)
 	for wi := 0; wi < wn; wi++ {
