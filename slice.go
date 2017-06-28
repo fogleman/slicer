@@ -65,16 +65,16 @@ func SliceMesh(m *fauxgl.Mesh, step float64) []Layer {
 	close(in)
 
 	// read results from workers
-	slices := make([]Layer, n)
+	layers := make([]Layer, n)
 	for i := 0; i < n; i++ {
-		slices[i] = <-out
+		layers[i] = <-out
 	}
 
-	// sort slices
-	sort.Slice(slices, func(i, j int) bool {
-		return slices[i].Z < slices[j].Z
+	// sort layers
+	sort.Slice(layers, func(i, j int) bool {
+		return layers[i].Z < layers[j].Z
 	})
-	return slices
+	return layers
 }
 
 type job struct {
