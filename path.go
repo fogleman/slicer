@@ -5,7 +5,7 @@ import "github.com/fogleman/fauxgl"
 type Path []fauxgl.Vector
 
 func joinPaths(paths []Path) []Path {
-	lookup := make(map[fauxgl.Vector]Path)
+	lookup := make(map[fauxgl.Vector]Path, len(paths))
 	for _, path := range paths {
 		lookup[path[0]] = path
 	}
