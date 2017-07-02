@@ -4,94 +4,113 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"time"
 
 	"github.com/fogleman/fauxgl"
+	embree "github.com/fogleman/go-embree"
 )
 
-const D = 5
-
-type Key struct {
-	Theta, Phi int
+func timed(name string) func() {
+	fmt.Printf("%s... ", name)
+	start := time.Now()
+	return func() {
+		fmt.Println(time.Since(start))
+	}
 }
 
-func MakeKey(v fauxgl.Vector) Key {
-	theta := fauxgl.Round(fauxgl.Degrees(math.Acos(v.Z))/D) * D
-	phi := fauxgl.Round(fauxgl.Degrees(math.Atan2(v.Y, v.X))/D) * D
-	phi = (phi + 360) % 360
-	return Key{theta, phi}
-}
-
-func (key Key) Opposite() Key {
-	theta := 180 - key.Theta
-	phi := (key.Phi + 180) % 360
-	return Key{theta, phi}
-}
-
-func (key Key) Vector() fauxgl.Vector {
-	theta := fauxgl.Radians(float64(key.Theta))
-	phi := fauxgl.Radians(float64(key.Phi))
-	x := math.Sin(theta) * math.Cos(phi)
-	y := math.Sin(theta) * math.Sin(phi)
-	z := math.Cos(theta)
-	return fauxgl.Vector{x, y, z}
+func fauxglToEmbree(mesh *fauxgl.Mesh) *embree.Mesh {
+	triangles := make([]embree.Triangle, len(mesh.Triangles))
+	for i, t := range mesh.Triangles {
+		triangles[i] = embree.Triangle{
+			embree.Vector{t.V1.Position.X, t.V1.Position.Y, t.V1.Position.Z},
+			embree.Vector{t.V2.Position.X, t.V2.Position.Y, t.V2.Position.Z},
+			embree.Vector{t.V3.Position.X, t.V3.Position.Y, t.V3.Position.Z},
+		}
+	}
+	return embree.NewMesh(triangles)
 }
 
 func main() {
+	var done func()
+
+	done = timed("creating sphere")
+	sphere := fauxgl.NewSphere2(6)
+	embreeSphere := fauxglToEmbree(sphere)
+	spherePoints := make(map[fauxgl.Vector]bool)
+	for _, t := range sphere.Triangles {
+		spherePoints[t.V1.Position] = true
+		spherePoints[t.V2.Position] = true
+		spherePoints[t.V3.Position] = true
+	}
+	done()
+
+	done = timed("loading mesh")
 	mesh, err := fauxgl.LoadMesh(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(1)
+	mesh.SaveSTL("in.stl")
+	done()
 
-	lookup1 := make(map[Key]float64)
+	done = timed("first pass")
+	lookup1 := make(map[fauxgl.Vector]float64)
 	for _, t := range mesh.Triangles {
 		n := t.Normal()
+		a := t.Area()
 		if math.IsNaN(n.Length()) {
 			continue
 		}
-		k := MakeKey(n)
-		a := t.Area()
-		lookup1[k] += a
+		ray := embree.Ray{embree.Vector{}, embree.Vector{n.X, n.Y, n.Z}}
+		hit := embreeSphere.Intersect(ray)
+		p := n.MulScalar(hit.T)
+		st := sphere.Triangles[hit.Index]
+		p1 := st.V1.Position
+		p2 := st.V2.Position
+		p3 := st.V3.Position
+		b := fauxgl.Barycentric(p1, p2, p3, p)
+		lookup1[p1] += a * b.X
+		lookup1[p2] += a * b.Y
+		lookup1[p3] += a * b.Z
 	}
+	done()
 
-	lookup2 := make(map[Key]float64)
-	for key1, a := range lookup1 {
-		for theta := 0; theta <= 180; theta += D {
-			for phi := 0; phi < 360; phi += D {
-				key2 := Key{theta, phi}
-				dot := key1.Vector().Dot(key2.Vector())
-				if dot < -1 {
-					dot = -1
-				}
-				if dot > 1 {
-					dot = 1
-				}
-				p := 1 - math.Acos(dot)/math.Pi
-				p = math.Pow(p, 16)
-				lookup2[key2] += a * p
-				// lookup2[key2.Opposite()] += a * p
+	done = timed("second pass")
+	lookup2 := make(map[fauxgl.Vector]float64)
+	for p1, a := range lookup1 {
+		for p2 := range spherePoints {
+			p := p1.Dot(p2)
+			if p < 0 {
+				continue
 			}
+			if p >= 1 {
+				p = 1
+			} else {
+				p = math.Pow(p, 32)
+			}
+			lookup2[p2] += a * p
 		}
 	}
+	done()
 
-	// var bestKey Key
-	// bestScore := math.Inf(1)
-	// for k, v := range lookup2 {
-	// 	if v < bestScore {
-	// 		bestScore = v
-	// 		bestKey = k
-	// 	}
-	// }
-	// fmt.Println(bestKey)
+	var best fauxgl.Vector
+	bestScore := math.Inf(1)
+	for k, v := range lookup2 {
+		if v < bestScore {
+			bestScore = v
+			best = k
+		}
+	}
+	fmt.Println(best)
 
-	// mesh.Transform(fauxgl.RotateTo(bestKey.Vector(), fauxgl.Vector{0, 0, 1}))
-	// mesh.SaveSTL("out.stl")
+	mesh.Transform(fauxgl.RotateTo(best, fauxgl.Vector{0, 0, 1}))
+	mesh.SaveSTL("out.stl")
 
-	sphere := fauxgl.NewSphere2(8)
+	done = timed("creating output")
 	for _, t := range sphere.Triangles {
-		t.V1.Position = t.V1.Position.MulScalar(lookup2[MakeKey(t.V1.Position)])
-		t.V2.Position = t.V2.Position.MulScalar(lookup2[MakeKey(t.V2.Position)])
-		t.V3.Position = t.V3.Position.MulScalar(lookup2[MakeKey(t.V3.Position)])
+		t.V1.Position = t.V1.Position.MulScalar(lookup2[t.V1.Position])
+		t.V2.Position = t.V2.Position.MulScalar(lookup2[t.V2.Position])
+		t.V3.Position = t.V3.Position.MulScalar(lookup2[t.V3.Position])
 	}
 	sphere.SaveSTL("sphere.stl")
+	done()
 }
