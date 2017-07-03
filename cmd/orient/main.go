@@ -35,7 +35,8 @@ func main() {
 
 	done = timed("creating sphere")
 	sphere := fauxgl.NewSphere2(6)
-	embreeSphere := fauxglToEmbree(sphere)
+	hitSphere := fauxgl.NewSphere2(3)
+	embreeSphere := fauxglToEmbree(hitSphere)
 	spherePoints := make(map[fauxgl.Vector]bool)
 	for _, t := range sphere.Triangles {
 		spherePoints[t.V1.Position] = true
@@ -49,7 +50,6 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	mesh.SaveSTL("in.stl")
 	done()
 
 	done = timed("first pass")
@@ -63,7 +63,7 @@ func main() {
 		ray := embree.Ray{embree.Vector{}, embree.Vector{n.X, n.Y, n.Z}}
 		hit := embreeSphere.Intersect(ray)
 		p := n.MulScalar(hit.T)
-		st := sphere.Triangles[hit.Index]
+		st := hitSphere.Triangles[hit.Index]
 		p1 := st.V1.Position
 		p2 := st.V2.Position
 		p3 := st.V3.Position
@@ -78,8 +78,8 @@ func main() {
 	lookup2 := make(map[fauxgl.Vector]float64)
 	for p1, a := range lookup1 {
 		for p2 := range spherePoints {
-			p := p1.Dot(p2)
-			if p < 0 {
+			p := p1.X*p2.X + p1.Y*p2.Y + p1.Z*p2.Z
+			if p < 0.5 {
 				continue
 			}
 			if p >= 1 {
@@ -92,25 +92,25 @@ func main() {
 	}
 	done()
 
-	var best fauxgl.Vector
+	done = timed("creating oriented.stl")
+	var bestVector fauxgl.Vector
 	bestScore := math.Inf(1)
 	for k, v := range lookup2 {
 		if v < bestScore {
 			bestScore = v
-			best = k
+			bestVector = k
 		}
 	}
-	fmt.Println(best)
+	mesh.Transform(fauxgl.RotateTo(bestVector, fauxgl.Vector{0, 0, 1}))
+	mesh.SaveSTL("oriented.stl")
+	done()
 
-	mesh.Transform(fauxgl.RotateTo(best, fauxgl.Vector{0, 0, 1}))
-	mesh.SaveSTL("out.stl")
-
-	done = timed("creating output")
+	done = timed("creating normals.stl")
 	for _, t := range sphere.Triangles {
 		t.V1.Position = t.V1.Position.MulScalar(lookup2[t.V1.Position])
 		t.V2.Position = t.V2.Position.MulScalar(lookup2[t.V2.Position])
 		t.V3.Position = t.V3.Position.MulScalar(lookup2[t.V3.Position])
 	}
-	sphere.SaveSTL("sphere.stl")
+	sphere.SaveSTL("normals.stl")
 	done()
 }
