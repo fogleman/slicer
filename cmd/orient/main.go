@@ -34,8 +34,8 @@ func main() {
 	var done func()
 
 	done = timed("creating sphere")
-	sphere := fauxgl.NewSphere2(6)
-	hitSphere := fauxgl.NewSphere2(3)
+	sphere := fauxgl.NewSphere(6)
+	hitSphere := fauxgl.NewSphere(3)
 	embreeSphere := fauxglToEmbree(hitSphere)
 	spherePoints := make(map[fauxgl.Vector]bool)
 	for _, t := range sphere.Triangles {
