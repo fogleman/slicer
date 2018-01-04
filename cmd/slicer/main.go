@@ -3,14 +3,17 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
+	"image"
+	"image/draw"
 	"math"
-	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/fogleman/fauxgl"
+	"github.com/fogleman/gg"
 	"github.com/fogleman/slicer"
 )
 
@@ -78,20 +81,22 @@ func process(infile string) {
 	done()
 
 	// determine output filename
-	dir, name := filepath.Split(infile)
-	if *directory != "" {
-		dir = *directory
-	}
-	outfile, _ := filepath.Abs(filepath.Join(dir, name) + ".svg")
+	// dir, name := filepath.Split(infile)
+	// if *directory != "" {
+	// 	dir = *directory
+	// }
+	// outfile, _ := filepath.Abs(filepath.Join(dir, name) + ".svg")
 
 	// write output
-	done = timed("creating svg")
-	svg := createSVG(box, layers)
-	ioutil.WriteFile(outfile, []byte(svg), 0644)
-	done()
+	// done = timed("creating svg")
+	// svg := createSVG(box, layers)
+	// ioutil.WriteFile(outfile, []byte(svg), 0644)
+	// done()
 
-	log(fmt.Sprintf("output: %s", outfile))
-	log("")
+	// log(fmt.Sprintf("output: %s", outfile))
+	// log("")
+
+	render(box, layers)
 }
 
 func createSVG(box fauxgl.Box, layers []slicer.Layer) string {
@@ -119,62 +124,74 @@ func createSVG(box fauxgl.Box, layers []slicer.Layer) string {
 	return buf.String()
 }
 
-// type job struct {
-// 	i     int
-// 	layer slicer.Layer
-// 	box   fauxgl.Box
-// }
+type job struct {
+	i     int
+	layer slicer.Layer
+	box   fauxgl.Box
+}
 
-// func render(box fauxgl.Box, layers []slicer.Layer) {
-// 	wn := runtime.NumCPU()
-// 	ch := make(chan job, len(layers))
-// 	var wg sync.WaitGroup
-// 	for wi := 0; wi < wn; wi++ {
-// 		wg.Add(1)
-// 		go worker(ch, &wg)
-// 	}
-// 	for i, l := range layers {
-// 		ch <- job{i, l, box}
-// 	}
-// 	close(ch)
-// 	wg.Wait()
-// }
+func render(box fauxgl.Box, layers []slicer.Layer) {
+	wn := runtime.NumCPU()
+	ch := make(chan job, len(layers))
+	var wg sync.WaitGroup
+	for wi := 0; wi < wn; wi++ {
+		wg.Add(1)
+		go worker(ch, &wg)
+	}
+	for i, l := range layers {
+		ch <- job{i, l, box}
+	}
+	close(ch)
+	wg.Wait()
+}
 
-// func worker(ch chan job, wg *sync.WaitGroup) {
-// 	const S = 1600
-// 	const P = 50
-// 	for j := range ch {
-// 		i := j.i
-// 		layer := j.layer
-// 		box := j.box
-// 		center := box.Center()
-// 		size := box.Size()
-// 		sx := (S - P*2) / size.X
-// 		sy := (S - P*2) / size.Y
-// 		scale := math.Min(sx, sy)
-// 		dc := gg.NewContext(S, S)
-// 		dc.InvertY()
-// 		dc.SetRGB(1, 1, 1)
-// 		dc.Clear()
-// 		dc.Translate(S/2, S/2)
-// 		dc.Scale(scale, scale)
-// 		dc.Translate(-center.X, -center.Y)
-// 		dc.SetFillRuleWinding()
-// 		for _, path := range layer.Paths {
-// 			dc.NewSubPath()
-// 			for _, point := range path {
-// 				dc.LineTo(point.X, point.Y)
-// 			}
-// 			dc.ClosePath()
-// 		}
-// 		dc.SetRGB(0, 0, 0)
-// 		dc.Fill()
-// 		// dc.SetRGB(0.6, 0.6, 0.6)
-// 		// dc.FillPreserve()
-// 		// dc.SetRGB(0, 0, 0)
-// 		// dc.SetLineWidth(3)
-// 		// dc.Stroke()
-// 		dc.SavePNG(fmt.Sprintf("out%04d.png", i))
-// 	}
-// 	wg.Done()
-// }
+func worker(ch chan job, wg *sync.WaitGroup) {
+	const Scale = 25
+	const W = Scale * 300
+	const H = Scale * 200
+	// const P = 50
+	for j := range ch {
+		i := j.i
+		layer := j.layer
+		box := j.box
+		center := box.Center()
+		// size := box.Size()
+		// sx := (S - P*2) / size.X
+		// sy := (S - P*2) / size.Y
+		// scale := math.Min(sx, sy)
+		dc := gg.NewContext(W, H)
+		dc.InvertY()
+		dc.SetRGB(1, 1, 1)
+		dc.Clear()
+		dc.Translate(W/2, H/2)
+		dc.Scale(Scale, Scale)
+		dc.Translate(-center.X, -center.Y)
+		dc.SetFillRuleWinding()
+		for _, path := range layer.Paths {
+			dc.NewSubPath()
+			for _, point := range path {
+				dc.LineTo(point.X, point.Y)
+			}
+			dc.ClosePath()
+		}
+		dc.SetRGB(0, 0, 0)
+		dc.Fill()
+
+		// dc.SetRGB(0.6, 0.6, 0.6)
+		// dc.FillPreserve()
+		// dc.SetRGB(0, 0, 0)
+		// dc.SetLineWidth(3)
+		// dc.Stroke()
+		// dc.SavePNG(fmt.Sprintf("out/%04d.png", i))
+
+		src := dc.Image()
+		dst := image.NewGray(src.Bounds())
+		draw.Draw(dst, src.Bounds(), src, image.ZP, draw.Src)
+
+		path := fmt.Sprintf("out/%04d.png", i)
+		gg.SavePNG(path, dst)
+
+		fmt.Println(path)
+	}
+	wg.Done()
+}
