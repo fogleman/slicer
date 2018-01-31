@@ -29,3 +29,23 @@ func joinPaths(paths []Path) []Path {
 	}
 	return result
 }
+
+func (p Path) Chop(step float64) Path {
+	var result Path
+	for i := 0; i < len(p)-1; i++ {
+		a := p[i]
+		b := p[i+1]
+		v := b.Sub(a)
+		l := v.Length()
+		if i == 0 {
+			result = append(result, a)
+		}
+		d := step
+		for d < l {
+			result = append(result, a.Add(v.MulScalar(d/l)))
+			d += step
+		}
+		result = append(result, b)
+	}
+	return result
+}
