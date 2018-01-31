@@ -43,7 +43,7 @@ func SliceMesh(m *fauxgl.Mesh, step float64) []Layer {
 	index := 0
 	var active []*triangle
 	for i := 0; i < n; i++ {
-		z := fauxgl.RoundPlaces(minz+step*float64(i), 8)
+		z := fauxgl.RoundPlaces(minz+step*float64(i)+step/2, 8)
 		// remove triangles below plane
 		newActive := active[:0]
 		for _, t := range active {
@@ -74,6 +74,15 @@ func SliceMesh(m *fauxgl.Mesh, step float64) []Layer {
 	sort.Slice(layers, func(i, j int) bool {
 		return layers[i].Z < layers[j].Z
 	})
+
+	// filter out empty layers
+	if len(layers[0].Paths) == 0 {
+		layers = layers[1:]
+	}
+	if len(layers[len(layers)-1].Paths) == 0 {
+		layers = layers[:len(layers)-1]
+	}
+
 	return layers
 }
 
