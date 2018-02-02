@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,9 +20,8 @@ import (
 
 var (
 	quiet     = kingpin.Flag("quiet", "Run in silent mode.").Short('q').Bool()
-	size      = kingpin.Flag("size", "Set the slice thickness.").Short('s').Float()
-	number    = kingpin.Flag("number", "Set the number of slices.").Short('n').Int()
 	directory = kingpin.Flag("directory", "Set the output directory.").Short('d').ExistingDir()
+	size      = kingpin.Flag("size", "Set the slice thickness.").Required().Short('s').Float()
 	width     = kingpin.Flag("width", "Set the raster width in model units.").Required().Short('w').Float()
 	height    = kingpin.Flag("height", "Set the raster height in model units.").Required().Short('h').Float()
 	scale     = kingpin.Flag("scale", "Set the raster scale.").Short('x').Required().Float()
@@ -30,9 +30,6 @@ var (
 
 func main() {
 	kingpin.Parse()
-	if *size == 0 && *number == 0 {
-		kingpin.Fatalf("must specify slice thickness or count, try --help")
-	}
 	for _, filename := range *files {
 		process(filename)
 	}
@@ -69,22 +66,23 @@ func process(infile string) {
 	box := mesh.BoundingBox()
 	done()
 
-	// determine slice thickness
-	var step float64
-	if *size != 0 {
-		step = *size
-	}
-	if *number != 0 {
-		step = box.Size().Z / float64(*number)
-	}
-
 	// slice mesh
 	done = timed("slicing mesh")
-	layers := slicer.SliceMesh(mesh, step)
+	layers := slicer.SliceMesh(mesh, *size)
 	done()
 
+	// determine output dir
+	dir := "."
+	if *directory != "" {
+		dir = *directory
+	}
+	_, name := filepath.Split(infile)
+	name = strings.TrimSuffix(name, filepath.Ext(name))
+	dir = filepath.Join(dir, name)
+	os.MkdirAll(dir, os.ModePerm)
+
 	// render pngs
-	render(box, layers)
+	render(box, layers, dir)
 }
 
 type job struct {
@@ -93,13 +91,13 @@ type job struct {
 	box   fauxgl.Box
 }
 
-func render(box fauxgl.Box, layers []slicer.Layer) {
+func render(box fauxgl.Box, layers []slicer.Layer, dir string) {
 	wn := runtime.NumCPU()
 	ch := make(chan job, len(layers))
 	var wg sync.WaitGroup
 	for wi := 0; wi < wn; wi++ {
 		wg.Add(1)
-		go worker(ch, &wg)
+		go worker(ch, &wg, dir)
 	}
 	for i, l := range layers {
 		ch <- job{i, l, box}
@@ -136,14 +134,10 @@ func savePNG(path string, im image.Image) error {
 	return encoder.Encode(file, im)
 }
 
-func worker(ch chan job, wg *sync.WaitGroup) {
+func worker(ch chan job, wg *sync.WaitGroup, dir string) {
 	s := *scale
 	w := *width * s
 	h := *height * s
-	dir := "."
-	if *directory != "" {
-		dir = *directory
-	}
 	for j := range ch {
 		i := j.i
 		layer := j.layer
