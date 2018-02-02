@@ -1,6 +1,6 @@
 # slicer
 
-Fast 3D mesh slicer written in Go. Writes slices to an SVG file.
+Fast 3D mesh slicer written in Go. Writes slices to grayscale PNG files.
 
 ### Install Go
 
@@ -22,11 +22,8 @@ $ go get -u github.com/fogleman/slicer/cmd/slicer
 
 ```bash
 $ slicer --help
-$ slicer -s 0.1 model.stl  # slice model.stl with slices that are 0.1 thick
-$ slicer -n 100 model.stl  # slice model.stl into 100 slices
-$ slicer -q -s 0.1 -d . folder/*.stl  # quietly slice multiple stl files and put results in cwd
+
+# slice model.stl with slices that are 0.1 units thick, rendering PNGs that
+# cover 100x100 units in size with resolution of 10 pixels per unit
+$ slicer -s 0.1 -w 100 -h 100 -x 10 model.stl 
 ```
-
-### Example Output
-
-![Example](http://i.imgur.com/BNKZ8HY.png)
