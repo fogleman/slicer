@@ -27,3 +27,7 @@ $ slicer --help
 # cover 100x100 units in size with resolution of 10 pixels per unit
 $ slicer -s 0.1 -w 100 -h 100 -x 10 model.stl 
 ```
+
+### Example Slice
+
+![Example](https://i.imgur.com/PWKUt1L.png)
